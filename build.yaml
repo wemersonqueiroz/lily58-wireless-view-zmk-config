@@ -1,4 +1,4 @@
-name: Build
+name: Build Firmware
 
 on:
   push:
@@ -19,8 +19,10 @@ jobs:
         include:
           - board: nice_nano_v2
             shield: lily58_left nice_view_adapter nice_view
+            artifact-name: lily58_left
           - board: nice_nano_v2
             shield: lily58_right nice_view_adapter nice_view
+            artifact-name: lily58_right
     
     steps:
       - name: Checkout
@@ -34,33 +36,33 @@ jobs:
             tools/
             zephyr/
             bootloader/
-          key: ${{ runner.os }}-modules-${{ hashFiles('west.yml') }}
+          key: ${{ runner.os }}-modules-${{ hashFiles('manifest-dir/west.yml') }}
           restore-keys: |
             ${{ runner.os }}-modules-
       
-      - name: West Init
-        run: west init -l config
+      - name: Initialize west workspace
+        run: |
+          west init -l config
+          west update
+          west zephyr-export
       
-      - name: West Update
-        run: west update
+      - name: Build firmware (${{ matrix.board }} / ${{ matrix.shield }})
+        run: |
+          west build -s zmk/app -b ${{ matrix.board }} -- -DSHIELD="${{ matrix.shield }}" -DZMK_CONFIG="${GITHUB_WORKSPACE}/config"
       
-      - name: West Zephyr export
-        run: west zephyr-export
-      
-      - name: West Build (${{ matrix.board }} / ${{ matrix.shield }})
-        run: west build -s zmk/app -b ${{ matrix.board }} -- -DSHIELD="${{ matrix.shield }}" -DZMK_CONFIG=${GITHUB_WORKSPACE}/config
-      
-      - name: Artifact creation
+      - name: Prepare artifacts
         run: |
           mkdir -p artifacts
           if [ -f build/zephyr/zmk.uf2 ]; then
-            cp build/zephyr/zmk.uf2 "artifacts/zmk-${{ matrix.board }}-${{ matrix.shield }}.uf2"
+            cp build/zephyr/zmk.uf2 "artifacts/${MATRIX_ARTIFACT_NAME}.uf2"
           elif [ -f build/zephyr/zmk.hex ]; then
-            cp build/zephyr/zmk.hex "artifacts/zmk-${{ matrix.board }}-${{ matrix.shield }}.hex"
+            cp build/zephyr/zmk.hex "artifacts/${MATRIX_ARTIFACT_NAME}.hex"
           fi
+        env:
+          MATRIX_ARTIFACT_NAME: ${{ matrix.artifact-name }}
       
-      - name: Archive firmware
+      - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: firmware
+          name: ${{ matrix.artifact-name }}
           path: artifacts
