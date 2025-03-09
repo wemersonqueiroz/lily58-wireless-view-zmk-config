@@ -14,15 +14,18 @@ jobs:
     container:
       image: zmkfirmware/zmk-build-arm:stable
     strategy:
+      fail-fast: false
       matrix:
         include:
           - board: nice_nano_v2
             shield: lily58_left nice_view_adapter nice_view
           - board: nice_nano_v2
             shield: lily58_right nice_view_adapter nice_view
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+      
       - name: Cache west modules
         uses: actions/cache@v3
         with:
@@ -31,26 +34,32 @@ jobs:
             tools/
             zephyr/
             bootloader/
-          key: ${{ runner.os }}-modules-${{ hashFiles('manifest-dir/west.yml') }}
+          key: ${{ runner.os }}-modules-${{ hashFiles('west.yml') }}
           restore-keys: |
             ${{ runner.os }}-modules-
+      
       - name: West Init
         run: west init -l config
+      
       - name: West Update
         run: west update
+      
       - name: West Zephyr export
         run: west zephyr-export
-      - name: West Build
-        run: west build -s zmk/app -b ${{ matrix.board }} -- -DSHIELD="${{ matrix.shield }}" -DZMK_CONFIG=/config
-      - name: Rename artifacts
+      
+      - name: West Build (${{ matrix.board }} / ${{ matrix.shield }})
+        run: west build -s zmk/app -b ${{ matrix.board }} -- -DSHIELD="${{ matrix.shield }}" -DZMK_CONFIG=${GITHUB_WORKSPACE}/config
+      
+      - name: Artifact creation
         run: |
-          mkdir artifacts
-          for file in build/zephyr/zmk.uf2 build/zephyr/zmk.hex; do
-            if [ -f "$file" ]; then
-              cp "$file" "artifacts/$(basename $file | cut -d. -f1)-${{ matrix.board }}-${{ matrix.shield }}-$(date +"%Y%m%d%H%M%S").${file##*.}"
-            fi
-          done
-      - name: Upload artifacts
+          mkdir -p artifacts
+          if [ -f build/zephyr/zmk.uf2 ]; then
+            cp build/zephyr/zmk.uf2 "artifacts/zmk-${{ matrix.board }}-${{ matrix.shield }}.uf2"
+          elif [ -f build/zephyr/zmk.hex ]; then
+            cp build/zephyr/zmk.hex "artifacts/zmk-${{ matrix.board }}-${{ matrix.shield }}.hex"
+          fi
+      
+      - name: Archive firmware
         uses: actions/upload-artifact@v3
         with:
           name: firmware
